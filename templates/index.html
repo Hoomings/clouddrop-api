@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudDrop - Serverless File Sharing</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col p-6">
+  <div class="max-w-4xl mx-auto w-full space-y-6">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+      <div>
+        <h1 class="text-2xl font-bold flex items-center gap-2 text-sky-400">
+          <i data-lucide="cloud"></i> CloudDrop
+        </h1>
+        <p class="text-xs text-slate-400">Cloud Run &bull; Cloud Storage &bull; Firestore (asia-southeast1)</p>
+      </div>
+      <div class="text-xs bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+        Bucket: <strong class="text-sky-300">{{ bucket_name }}</strong>
+      </div>
+    </div>
+
+    <!-- Upload Card -->
+    <div class="bg-slate-800/80 p-6 rounded-xl border border-slate-700 text-center">
+      <input type="file" id="fileInput" class="hidden">
+      <button onclick="document.getElementById('fileInput').click()" class="px-6 py-3 bg-sky-500 hover:bg-sky-600 rounded-lg font-medium transition shadow-lg shadow-sky-500/20">
+        Choose File to Upload
+      </button>
+      <p id="uploadStatus" class="text-xs text-slate-400 mt-2">Ready</p>
+    </div>
+
+    <!-- Files Table -->
+    <div class="bg-slate-800/80 rounded-xl border border-slate-700 overflow-hidden">
+      <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+        <h2 class="font-semibold text-sm">Files in CloudDrop</h2>
+        <button onclick="loadFiles()" class="text-xs text-sky-400 hover:underline">Refresh</button>
+      </div>
+      <table class="w-full text-left text-sm text-slate-300">
+        <thead class="bg-slate-900/60 text-xs text-slate-400">
+          <tr>
+            <th class="p-3">File Name</th>
+            <th class="p-3">Size</th>
+            <th class="p-3 text-center">Downloads</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="filesList" class="divide-y divide-slate-700/50"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+
+    fileInput.addEventListener('change', async () => {
+      if (!fileInput.files.length) return;
+      const file = fileInput.files[0];
+      uploadStatus.textContent = `Uploading ${file.name}...`;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('Upload failed');
+        uploadStatus.textContent = 'Uploaded successfully!';
+        fileInput.value = '';
+        setTimeout(() => uploadStatus.textContent = 'Ready', 2000);
+        loadFiles();
+      } catch (err) {
+        alert(err.message);
+        uploadStatus.textContent = 'Upload failed';
+      }
+    });
+
+    async function loadFiles() {
+      const tbody = document.getElementById('filesList');
+      tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">Loading...</td></tr>';
+      try {
+        const res = await fetch('/api/files');
+        const data = await res.json();
+        const files = data.files || [];
+        if (!files.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-500">No files uploaded yet.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = '';
+        files.forEach(f => {
+          const tr = document.createElement('tr');
+          tr.className = "hover:bg-slate-700/30";
+          tr.innerHTML = `
+            <td class="p-3 font-medium text-white">${f.name}</td>
+            <td class="p-3 text-xs text-slate-400">${(f.size/1024).toFixed(1)} KB</td>
+            <td class="p-3 text-xs text-center">${f.download_count || 0}</td>
+            <td class="p-3 text-right space-x-2">
+              <a href="/api/download/${f.id}" class="text-sky-400 hover:underline text-xs">Download</a>
+              <button onclick="deleteFile('${f.id}')" class="text-rose-400 hover:underline text-xs">Delete</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-rose-400">Failed to load files</td></tr>';
+      }
+    }
+    async function deleteFile(id) {
+      if (!confirm('Delete file?')) return;
+      await fetch('/api/files/' + id, { method: 'DELETE' });
+      loadFiles();
+    }
+    loadFiles();
+  </script>
+</body>
+</html>
